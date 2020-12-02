@@ -1,4 +1,4 @@
 # WGS-Pipeline
 
-## [tutorial](WGS.ipynb)
+## [tutorial](WGS-WorkFlow.ipynb)
 ## [nf-core/bacass usage](nf-core.ipynb)
