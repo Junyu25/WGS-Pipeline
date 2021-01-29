@@ -55,10 +55,30 @@ def RunProkkaDirectory(Dir):
             
         RunProkkaParallel(contigsFileList, contigsOutDirList, prefixList)
 
+# Don't run in the Dir 
+# It's better to run in the manifest profile.
 
+## RunUnicycler
+def RunUnicycler(R1, R2, prefix, OutDir, threads):
+    unicyclerDir = os.path.join(OutDir, "unicycler")
+    if os.path.exists(unicyclerDir) == 0:
+        os.makedirs(unicyclerDir, 0o777, True)
+    cmd = "unicycler -1 " + R1 + " -2 " + R2 + " -o " + os.path.join(unicyclerDir, prefix) + " --threads " + str(threads)
+    subprocess.call(cmd, shell=True)
+def RunUnicyclerParallel(R1List, R2List, prefixList, OutDir, threads, jobs):
+    pool = Pool(processes = jobs)
+    pool.starmap(RunFastp, zip(R1List, R2List, prefixList, repeat(thread), repeat(OutDir)))
+    pool.close()
+    pool.join()
+    pool.terminate()
 
-
-#Run Spades in parallel
+## SPAdes Assembling
+def RunSpades(R1, R2, OutDir, threads):
+    os.makedirs(OutDir, 0o777, True)
+    #cmd = "spades.py --isolate -1 " + R1 + " -2 " + R2 + " -o " + OutDir
+    cmd = "spades.py --meta -1 " + R1 + " -2 " + R2 + " -o " + OutDir + " -t " + str(threads)
+    subprocess.call(cmd, shell=True)
+## Run Spades in parallel
 def RunSpadesParallel(R1List, R2List, outFileList, jobs, threads):
     #numOfprocess = len(R1List)
     #pool = Pool(processes=numOfprocess)
@@ -68,19 +88,14 @@ def RunSpadesParallel(R1List, R2List, outFileList, jobs, threads):
     pool.join()
     pool.terminate()
 
-#SPAdes Assembling
-def RunSpades(R1, R2, OutDir, threads):
-    os.makedirs(OutDir, 0o777, True)
-    #cmd = "spades.py --isolate -1 " + R1 + " -2 " + R2 + " -o " + OutDir
-    cmd = "spades.py --meta -1 " + R1 + " -2 " + R2 + " -o " + OutDir + " -t " + str(threads)
-    subprocess.call(cmd, shell=True)
+
 
 
 #Run Bandage in parallel
-def RunBandageParallel(fileList, outFileList):
+def RunBandageParallel(fileList, outFileList, jobs):
     #numOfprocess = len(R1List)
     #pool = Pool(processes=numOfprocess)
-    pool = Pool(processes=4)
+    pool = Pool(processes=jobs)
     pool.starmap(RunBandage, zip(fileList, outFileList))
     pool.close()
     pool.join()
