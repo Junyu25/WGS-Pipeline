@@ -124,6 +124,18 @@ def RunBandageParallel(fileList, prefixList, OutDir, jobs):
     pool.join()
     pool.terminate()
 
+## Run kraken2
+def RunKraken2(fasta, database, prefix, OutDir, threads):
+    cmd = "kraken2 -db " + database + " " + fasta + " --report " + os.path.join(OutDir, prefix + "_kraken2_txt") + " --threads " + str(threads)
+    subprocess.call(cmd, shell=True)
+#Run kraken2 in parallel
+def RunKraken2Parallel(fileList, database, prefixList, OutDir, threads, jobs):
+    pool = Pool(processes=jobs)
+    pool.starmap(RunKraken2, zip(fileList, repeat(database), prefixList, repeat(OutDir), repeat(threads)))
+    pool.close()
+    pool.join()
+    pool.terminate()
+
 ## Run Prokka
 def RunProkka(fasta, prefix, OutDir, threads):
     cmd = "prokka --addgenes --prefix " + prefix + " --outdir " + os.path.join(OutDir, prefix) + " --force " + fasta + " --cpus " + str(threads)
@@ -155,21 +167,40 @@ def parseAssembly(prefixList, UnicyclerDir):
     #print(assembleList)
     #print(graphList)
     return assembleList, graphList
-
+'''
+.fna	Nucleotide FASTA file of the input contig sequences.
+.faa	Protein FASTA file of the translated CDS sequences.
+.ffn	Nucleotide FASTA file of all the prediction transcripts (CDS, rRNA, tRNA, tmRNA, misc_RNA)
+'''
 def parseProkka(prefixList, ProkkaDir):
-    genomeList = []
-    R2_cleanList = []
+    fnaList = []
+    faaList = []
+    ffnList = []
     for prefix in prefixList:
-        R1_cleanList.append(os.path.join(fastpDir, prefix + "_R1.fastq"))
-        R2_cleanList.append(os.path.join(fastpDir, prefix + "_R2.fastq"))
-    return R1_cleanList, R2_cleanList
+        fnaList.append(os.path.join(ProkkaDir, prefix, prefix + ".fna"))
+        faaList.append(os.path.join(ProkkaDir, prefix, prefix + ".faa"))
+        ffnList.append(os.path.join(ProkkaDir, prefix, prefix + ".ffn"))
+    return fnaList, faaList, ffnList
+
+
+## Run ABRicate
+def RunABRicate(fasta, prefix, OutDir, threads):
+    cmd = "abricate " + fasta + " > " + os.path.join(OutDir, prefix + "_abricate.txt") + " --threads " + str(threads)
+    subprocess.call(cmd, shell=True)
+#Run ABRicate in parallel
+def RunABRicateaParallel(fileList, prefixList, OutDir, threads, jobs):
+    pool = Pool(processes=jobs)
+    pool.starmap(RunABRicate, zip(fileList, prefixList, repeat(OutDir), repeat(threads)))
+    pool.close()
+    pool.join()
+    pool.terminate()
 
 parser = argparse.ArgumentParser(description='WGS Assembly & Annotation')
 parser.add_argument('-i', '--input', dest='InFile', type=str, required=True,
                     help="the path of the reads")
 parser.add_argument('-o', '--output', dest='OutDir', type=str, required=True,
                     help="the output path of reads")
-parser.add_argument('-kd', '--database', dest='kraken2_db', type=str, required=False, default='/home/malab/databases_of_malab/nr/nr',
+parser.add_argument('-kd', '--database', dest='kraken2_db', type=str, required=False, default='/home/junyuchen/3-Resources/Databases/k2_standard_20201202',
                     help="the nr database path")
 parser.add_argument('-j', '--jobs', dest='jobs', type=str,  required=False, default='4',
                     help="the number of jobs run in parallel")
@@ -218,21 +249,27 @@ if os.path.exists(ABRicateDir) == 0:
     os.makedirs(ABRicateDir, 0o777, True)
 
     
-#RunFastpParallel(R1List, R2List, prefixList, fastpDir, threads, jobs)
-
-
+RunFastpParallel(R1List, R2List, prefixList, fastpDir, threads, jobs)
 
 R1_cleanList, R2_cleanList = parseRaw(prefixList, fastpDir)
 
-#RunUnicyclerParallel(R1_cleanList, R2_cleanList, prefixList, UnicyclerDir, threads, jobs)
-
-
-
+RunUnicyclerParallel(R1_cleanList, R2_cleanList, prefixList, UnicyclerDir, threads, jobs)
 
 assembleList, graphList = parseAssembly(prefixList, UnicyclerDir)
 
 RunQuastParallel(assembleList, R1_cleanList, R2_cleanList, prefixList, QuastrDir, threads, jobs)
-#RunBandageParallel(graphList, prefixList, BandageDir, jobs)
-#RunProkkaParallel(assembleList, prefixList, ProkkaDir, threads, jobs)
+RunBandageParallel(graphList, prefixList, BandageDir, jobs)
+RunKraken2Parallel(assembleList, kraken2_db, prefixList, Kraken2Dir, threads, jobs)
 
+RunProkkaParallel(assembleList, prefixList, ProkkaDir, threads, jobs)
+fnaList, faaList, ffnList = parseProkka(prefixList, ProkkaDir)
 
+# out tsv for future usage
+df1 = pd.DataFrame()
+df1["SampleID"] = prefixList
+df1["fna"] = fnaList
+df1["faa"] = faaList
+df1["ffn"] = ffnList
+df1.to_csv(os.path.join(OutDir, "prokka_path.csv"), index=None)
+
+RunABRicateaParallel(fnaList, prefixList, ABRicateDir, threads, jobs)
