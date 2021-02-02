@@ -60,19 +60,14 @@ def RunProkkaDirectory(Dir):
 
 ## Fastp pair end tirmming and merging
 def RunFastp(R1, R2, prefix, OutDir, threads):
-    fastpDir = os.path.join(OutDir, "fastp")
-    if os.path.exists(OutDir) == 0:
-        os.makedirs(OutDir, 0o777, True)
-    if os.path.exists(fastpDir) == 0:
-        os.makedirs(fastpDir, 0o777, True)
-    cmd = "fastp --in1 " + R1 + " --in2 " + R2 + " --out1 " + os.path.join(fastpDir, prefix + "_R1.fastq") + " --out2 " + os.path.join(fastpDir, prefix + "_R2.fastq") + \
+    cmd = "fastp --in1 " + R1 + " --in2 " + R2 + " --out1 " + os.path.join(OutDir, prefix + "_R1.fastq") + " --out2 " + os.path.join(fastpDir, prefix + "_R2.fastq") + \
     " --thread " + str(threads) + \
-    " --html " + os.path.join(fastpDir, prefix + ".html") + " --json " + os.path.join(fastpDir, prefix + ".json") + " --report_title " + prefix + "-fastq-merge-report"
+    " --html " + os.path.join(OutDir, prefix + ".html") + " --json " + os.path.join(OutDir, prefix + ".json") + " --report_title " + prefix + "-fastq-merge-report"
     subprocess.call(cmd, shell=True)
 ## Run fastp in parallel
 def RunFastpParallel(R1List, R2List, prefixList, OutDir, threads, jobs):
     pool = Pool(processes = jobs)
-    pool.starmap(RunFastp, zip(R1List, R2List, prefixList, repeat(thread), repeat(OutDir)))
+    pool.starmap(RunFastp, zip(R1List, R2List, prefixList, repeat(OutDir), repeat(threads)))
     pool.close()
     pool.join()
     pool.terminate()
@@ -83,7 +78,7 @@ def RunUnicycler(R1, R2, prefix, OutDir, threads):
     subprocess.call(cmd, shell=True)
 def RunUnicyclerParallel(R1List, R2List, prefixList, OutDir, threads, jobs):
     pool = Pool(processes = jobs)
-    pool.starmap(RunUnicycler, zip(R1List, R2List, prefixList, repeat(OutDir), repeat(thread)))
+    pool.starmap(RunUnicycler, zip(R1List, R2List, prefixList, repeat(OutDir), repeat(threads)))
     pool.close()
     pool.join()
     pool.terminate()
@@ -106,24 +101,25 @@ def RunSpadesParallel(R1List, R2List, outFileList, jobs, threads):
 
 
 def RunQuast(fasta, R1, R2, prefix, OutDir, threads):
-    cmd = "quast.py " + fasta + " -1 " + R1 + " -2 " + R2 + " -o " + os.path.join(OutDir, prefix) + " --threads " + str(threads)
+    cmd = "quast " + fasta + " -1 " + R1 + " -2 " + R2 + " -o " + os.path.join(OutDir, prefix) + " --threads " + str(threads)
+    subprocess.call(cmd, shell=True)
 ## RunQuastParallel
 def RunQuastParallel(fastaList, R1List, R2List, prefixList, OutDir, threads, jobs):
     pool = Pool(processes = jobs)
-    pool.starmap(RunQuast, zip(fastaList, R1List, R2List, prefixList, repeat(thread), repeat(OutDir)))
+    pool.starmap(RunQuast, zip(fastaList, R1List, R2List, prefixList, repeat(OutDir), repeat(threads)))
     pool.close()
     pool.join()
     pool.terminate()
 
-def RunBandage(InFile, OutFile):
+def RunBandage(InFile, prefix, OutDir):
     #InFile: A graph file of any type supported by Bandage
     #OutFile: The image file to be created (must end in '.jpg', '.png' or '.svg')
-    cmd = "Bandage image " + os.path.join(InFile, "assemble", "assembly_graph.fastg") + " " + OutFile
+    cmd = "Bandage image " + InFile + " " + os.path.join(OutDir, prefix + "_graph.png")
     subprocess.call(cmd, shell=True)
 #Run Bandage in parallel
-def RunBandageParallel(fileList, outFileList, jobs):
+def RunBandageParallel(fileList, prefixList, OutDir, jobs):
     pool = Pool(processes=jobs)
-    pool.starmap(RunBandage, zip(fileList, outFileList))
+    pool.starmap(RunBandage, zip(fileList, prefixList, repeat(OutDir)))
     pool.close()
     pool.join()
     pool.terminate()
@@ -141,8 +137,32 @@ def RunProkkaParallel(fileList, prefixList, OutDir, threads, jobs):
     pool.join()
     pool.terminate()
 
+    
+def parseRaw(prefixList, fastpDir):
+    R1_cleanList = []
+    R2_cleanList = []
+    for prefix in prefixList:
+        R1_cleanList.append(os.path.join(fastpDir, prefix + "_R1.fastq"))
+        R2_cleanList.append(os.path.join(fastpDir, prefix + "_R2.fastq"))
+    return R1_cleanList, R2_cleanList
 
+def parseAssembly(prefixList, UnicyclerDir):
+    assembleList = []
+    graphList = []
+    for prefix in prefixList:
+        assembleList.append(os.path.join(UnicyclerDir, prefix, "assembly.fasta"))
+        graphList.append(os.path.join(UnicyclerDir, prefix, "assembly.gfa")) #assembly.gfa
+    #print(assembleList)
+    #print(graphList)
+    return assembleList, graphList
 
+def parseProkka(prefixList, ProkkaDir):
+    genomeList = []
+    R2_cleanList = []
+    for prefix in prefixList:
+        R1_cleanList.append(os.path.join(fastpDir, prefix + "_R1.fastq"))
+        R2_cleanList.append(os.path.join(fastpDir, prefix + "_R2.fastq"))
+    return R1_cleanList, R2_cleanList
 
 parser = argparse.ArgumentParser(description='WGS Assembly & Annotation')
 parser.add_argument('-i', '--input', dest='InFile', type=str, required=True,
@@ -169,10 +189,15 @@ threads = int(args.threads)
 
 ## process manifest
 df = pd.read_table(InFile)
-outFileList = df["SampleID"].tolist()
-R1List = df["forward-absolute-filepath"].tolist()
-R2List = df["reverse-absolute-filepath"].tolist()
+prefixList = df["SampleID"].tolist()
+R1List = df["R1"].tolist()
+R2List = df["R2"].tolist()
 ## init out dir
+if os.path.exists(OutDir) == 0:
+    os.makedirs(OutDir, 0o777, True)
+fastpDir = os.path.join(OutDir, "fastp")
+if os.path.exists(fastpDir) == 0:
+    os.makedirs(fastpDir, 0o777, True)
 UnicyclerDir = os.path.join(OutDir, "unicycler")
 if os.path.exists(UnicyclerDir) == 0:
     os.makedirs(UnicyclerDir, 0o777, True)
@@ -191,3 +216,23 @@ if os.path.exists(ProkkaDir) == 0:
 ABRicateDir = os.path.join(OutDir, "abricate")
 if os.path.exists(ABRicateDir) == 0:
     os.makedirs(ABRicateDir, 0o777, True)
+
+    
+#RunFastpParallel(R1List, R2List, prefixList, fastpDir, threads, jobs)
+
+
+
+R1_cleanList, R2_cleanList = parseRaw(prefixList, fastpDir)
+
+#RunUnicyclerParallel(R1_cleanList, R2_cleanList, prefixList, UnicyclerDir, threads, jobs)
+
+
+
+
+assembleList, graphList = parseAssembly(prefixList, UnicyclerDir)
+
+RunQuastParallel(assembleList, R1_cleanList, R2_cleanList, prefixList, QuastrDir, threads, jobs)
+#RunBandageParallel(graphList, prefixList, BandageDir, jobs)
+#RunProkkaParallel(assembleList, prefixList, ProkkaDir, threads, jobs)
+
+
