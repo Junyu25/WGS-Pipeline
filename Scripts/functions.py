@@ -17,12 +17,14 @@ limitations under the License.
 import os
 #import argparse
 import subprocess
-#import pandas as pd
+import pandas as pd
 #from Bio import SeqIO
 #from shutil import copyfile
 from itertools import repeat
 from multiprocessing import Pool, freeze_support
 
+from Bio import Entrez
+Entrez.email = "jy.chen1@siat.ac.cn" 
 
 def RunDiamond(fasta, prefix, dbDir, OutDir, threads):
     if os.path.exists(OutDir) == 0:
@@ -65,6 +67,30 @@ def parseProkka(prefixList, ProkkaDir):
         faaList.append(os.path.join(ProkkaDir, prefix, prefix + ".faa"))
         ffnList.append(os.path.join(ProkkaDir, prefix, prefix + ".ffn"))
     return fnaList, faaList, ffnList
+
+## Run kraken2
+def RunKraken2(fasta, database, prefix, OutDir, threads):
+    cmd = "kraken2 -db " + database + " " + fasta + " --report " + os.path.join(OutDir, prefix + "_kraken2.tsv") + " --threads " + str(threads)
+    subprocess.call(cmd, shell=True)
+#Run kraken2 in parallel
+def RunKraken2Parallel(fileList, database, prefixList, OutDir, threads, jobs):
+    pool = Pool(processes=jobs)
+    pool.starmap(RunKraken2, zip(fileList, repeat(database), prefixList, repeat(OutDir), repeat(threads)))
+    pool.close()
+    pool.join()
+    pool.terminate()
+#parse Kraken2 result
+def parseKraken2(report):
+    df = pd.read_table(report)
+    df.columns = ["%", "reads", "lreads", "lvl", "tid", "name"]
+    df1 = df.loc[df["lvl"] == "S"]
+    df2 = df1.loc[df1["%"] == df1["%"].max()]
+    df2 = df2.reset_index()
+    tid = df2["tid"][0]
+    handle = Entrez.efetch(db="Taxonomy", id=str(tid) , retmode="xml")
+    records = Entrez.read(handle)
+    taxa = records[0]["Lineage"] + "; " + records[0]["ScientificName"]
+    return tid, taxa
 
 ## Run ABRicate
 def RunABRicate(fasta, prefix, OutDir, threads):
