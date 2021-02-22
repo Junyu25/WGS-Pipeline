@@ -24,11 +24,24 @@ from itertools import repeat
 from multiprocessing import Pool, freeze_support
 
 
+def RunDiamond(fasta, prefix, dbDir, OutDir, threads):
+    if os.path.exists(OutDir) == 0:
+        os.makedirs(OutDir, 0o777, True)
+    cmd = "diamond blastp --db " + dbDir + " --query " + fasta + " --out " + os.path.join(OutDir, prefix + "_blasp.tsv") + " --evalue 1e-05 --outfmt 6 --max-target-seqs 1" + " --threads " + str(threads)
+    subprocess.call(cmd, shell=True)
+#Run Diamond in parallel
+def RunDiamondParallel(fileList, prefixList, dbDir, OutDir, threads, jobs):
+    pool = Pool(processes = jobs)
+    pool.starmap(RunDiamond, zip(fileList, prefixList, repeat(dbDir), repeat(OutDir), repeat(threads)))
+    pool.close()
+    pool.join()
+    pool.terminate()
+
 ## Run Prokka
 def RunProkka(fasta, prefix, OutDir, threads):
     cmd = "prokka --addgenes --prefix " + prefix + " --outdir " + os.path.join(OutDir, prefix) + \
         " --force " + fasta + " --cpus " + str(threads)
-    print(cmd)
+    #print(cmd)
     subprocess.call(cmd, shell=True)
 ## Run Prokka in parallel
 def RunProkkaParallel(fileList, prefixList, OutDir, threads, jobs):
