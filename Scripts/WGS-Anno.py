@@ -252,7 +252,7 @@ if os.path.exists(BileAcidDir) == 0:
     os.makedirs(BileAcidDir, 0o777, True)
 
 
-RunKraken2Parallel(assembleList, kraken2_db, prefixList, Kraken2Dir, threads, jobs)
+RunKraken2Parallel(fnaList, kraken2_db, prefixList, Kraken2Dir, threads, jobs)
 
 RunABRicateaParallel(fnaList, prefixList, ABRicateDir, threads, jobs)
 
